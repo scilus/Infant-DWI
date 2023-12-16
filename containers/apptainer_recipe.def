@@ -1,0 +1,113 @@
+Bootstrap: docker
+From: scilus/scilus:1.6.0
+
+%labels
+    version ChildBrainFlow-1.0.0
+
+%post
+    # Install required tcsh and csh.
+    apt-get update
+    apt-get install -y csh tcsh
+    
+    # Installing Conda for FastSurfer
+    export CONDA_FILE=Miniconda3-py38_4.11.0-Linux-x86_64.sh
+    wget --no-check-certificate -qO ~/miniconda.sh https://repo.continuum.io/miniconda/${CONDA_FILE}
+    chmod +x ~/miniconda.sh
+    ~/miniconda.sh -b -p /opt/conda
+    rm ~/miniconda.sh
+    export PATH=/opt/conda/bin:$PATH
+
+    # Installing FastSurfer latest stable release.
+    wget -O FastSurfer.tar.gz "https://github.com/Deep-MI/FastSurfer/archive/refs/tags/v2.1.2.tar.gz"
+    tar -xzvf FastSurfer.tar.gz -C $APPTAINER_ROOTFS/ 
+    mv $APPTAINER_ROOTFS/FastSurfer-2.1.2 $APPTAINER_ROOTFS/FastSurfer
+    rm FastSurfer.tar.gz
+    conda env create -f $APPTAINER_ROOTFS/FastSurfer/fastsurfer_env_cpu.yml
+
+    # Install conda-pack
+    conda install -c conda-forge conda-pack
+
+    # Use conda-pack to create a standalone env in /venv:
+    conda-pack -n fastsurfer_cpu -o /tmp/env.tar && \
+    mkdir /venv && cd /venv && tar xf /tmp/env.tar && \
+    rm /tmp/env.tar
+
+    # Fix paths.
+    /venv/bin/conda-unpack
+    export PATH=/venv/bin:$PATH
+    export PYTHONPATH=/FastSurfer:$PYTHONPATH
+
+    # Downloading checkpoints.
+    python3.8 $APPTAINER_ROOTFS/FastSurfer/FastSurferCNN/download_checkpoints.py --all
+
+    # Installing FreeSurfer on top of scilus:1.6.0
+    cd /root
+    wget "https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/7.3.2/freesurfer-linux-centos7_x86_64-7.3.2.tar.gz" -O fs.tar.gz
+    tar --no-same-owner -xzvf fs.tar.gz
+    mv freesurfer $APPTAINER_ROOTFS/
+    rm fs.tar.gz
+
+    # Install lib*
+    apt-get install -y libglu1-mesa libxt6 libxmu6 libgl1 freeglut3-dev
+    echo "/usr/local/lib" >> /etc/ld.so.conf
+    ldconfig
+
+    # Download additional files
+    wget -O $APPTAINER_ROOTFS/freesurfer/license.txt "https://www.dropbox.com/scl/fi/0s8lp6lydyd0rxawxb4jm/license.txt?rlkey=hz54oc0d4sor69avqphtrjvgn&dl=0"
+    wget -O FS_BN_GL_SF_utils.tar.gz "https://www.dropbox.com/scl/fi/6s1tc4eanf2sutejw7fkd/FS_BN_GL_SF_utils.tar.gz?rlkey=3gvhvpepv7ldkqef3go10cb5e&dl=0" && \
+    tar -xzvf FS_BN_GL_SF_utils.tar.gz -C $APPTAINER_ROOTFS/ && \
+    rm FS_BN_GL_SF_utils.tar.gz
+
+    # Setup parallel
+    wget http://ftp.gnu.org/gnu/parallel/parallel-latest.tar.bz2
+    tar xjf parallel-latest.tar.bz2
+    cd parallel-* && ./configure 
+    make && make install
+    echo 'will cite' | parallel --citation 1> /dev/null 2> /dev/null &
+    
+    # Setup FreeSurfer environment
+    export OS=Linux
+    export PATH=${PATH}:$APPTAINER_ROOTFS/freesurfer/bin:$APPTAINER_ROOTFS/freesurfer/fsfast/bin:$APPTAINER_ROOTFS/freesurfer/tktools:$APPTAINER_ROOTFS/freesurfer/mni/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    export FREESURFER_HOME=$APPTAINER_ROOTFS/freesurfer
+    export FREESURFER=$APPTAINER_ROOTFS/freesurfer
+    export SUBJECTS_DIR=$APPTAINER_ROOTFS/freesurfer/subjects
+    export LOCAL_DIR=$APPTAINER_ROOTFS/freesurfer/local
+    export FSFAST_HOME=$APPTAINER_ROOTFS/freesurfer/fsfast
+    export FMRI_ANALYSIS_DIR=$APPTAINER_ROOTFS/freesurfer/fsfast
+    export FUNCTIONALS_DIR=$APPTAINER_ROOTFS/freesurfer/sessions
+    export FS_LICENSE=$APPTAINER_ROOTFS/freesurfer/license.txt
+
+    # Set default FreeSurfer options
+    export FS_OVERRIDE=0
+    export FIX_VERTEX_AREA=""
+    export FSF_OUTPUT_FORMAT=nii.gz
+
+    # Set MNI environment requirements
+    export MINC_BIN_DIR=$APPTAINER_ROOTFS/freesurfer/mni/bin
+    export MINC_LIB_DIR=$APPTAINER_ROOTFS/freesurfer/mni/lib
+    export MNI_DIR=$APPTAINER_ROOTFS/freesurfer/mni
+    export MNI_DATAPATH=$APPTAINER_ROOTFS/freesurfer/mni/data
+    export MNI_PERL5LIB=$APPTAINER_ROOTFS/freesurfer/mni/share/perl5
+    export PERL5LIB=$APPTAINER_ROOTFS/freesurfer/mni/share/perl5
+
+%environment
+    export OS=Linux
+    export PATH=${PATH}:$APPTAINER_ROOTFS/freesurfer/bin:$APPTAINER_ROOTFS/freesurfer/fsfast/bin:$APPTAINER_ROOTFS/freesurfer/tktools:$APPTAINER_ROOTFS/freesurfer/mni/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    export FREESURFER_HOME=$APPTAINER_ROOTFS/freesurfer
+    export FREESURFER=$APPTAINER_ROOTFS/freesurfer
+    export SUBJECTS_DIR=$APPTAINER_ROOTFS/freesurfer/subjects
+    export LOCAL_DIR=$APPTAINER_ROOTFS/freesurfer/local
+    export FSFAST_HOME=$APPTAINER_ROOTFS/freesurfer/fsfast
+    export FMRI_ANALYSIS_DIR=$APPTAINER_ROOTFS/freesurfer/fsfast
+    export FUNCTIONALS_DIR=$APPTAINER_ROOTFS/freesurfer/sessions
+    export FS_LICENSE=$APPTAINER_ROOTFS/freesurfer/license.txt
+    export FS_OVERRIDE=0
+    export FIX_VERTEX_AREA=""
+    export FSF_OUTPUT_FORMAT=nii.gz
+    export MINC_BIN_DIR=$APPTAINER_ROOTFS/freesurfer/mni/bin
+    export MINC_LIB_DIR=$APPTAINER_ROOTFS/freesurfer/mni/lib
+    export MNI_DIR=$APPTAINER_ROOTFS/freesurfer/mni
+    export MNI_DATAPATH=$APPTAINER_ROOTFS/freesurfer/mni/data
+    export MNI_PERL5LIB=$APPTAINER_ROOTFS/freesurfer/mni/share/perl5
+    export PERL5LIB=$APPTAINER_ROOTFS/freesurfer/mni/share/perl5
+    export PATH=/venv/bin:$PATH

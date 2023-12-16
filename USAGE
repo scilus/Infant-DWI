@@ -1,238 +1,47 @@
-Infant-DWI Pipeline
-========================
 
-Pipeline adapted from the SCIL Tractoflow pipeline (https://github.com/scilus/tractoflow.git) [1].
-Made for use on newborn diffusion MRI data.
+ChildBrainFlow Pipeline
+=======================
 
-This pipeline performs tractography on newborn dMRI data using already segmented WM and brain
-mask. Those mask can come from any structural segmentation pipeline (dHCP, Infant-Freesurfer,
-Neocivet, etc.). It is RECOMMENDED to provide an already brain-extracted T2w volume, but if
-it is not the case, please use the --run_bet_t2w option.
+ChildBrainFlow is an end-to-end pipeline that performs tractography, t1 reconstruction and connectomics.
+It is essentially a merged version of multiple individual pipeline to avoid the handling of inputs/outputs
+between flows with some parameters tuned for pediatric brain scans. Here is a list of flows from which 
+process have been taken: 
 
-To simply perform tractography, use -profile tracking. The pipeline will only perform the tracking
-related processes. 
+    1. TractoFlow (https://github.com/scilus/tractoflow.git)
+    2. FreeSurfer-Flow (https://github.com/scilus/freesurfer_flow)
+    3. Connectoflow (https://github.com/scilus/connectoflow)
 
-It is possible to also run a connectivity analysis following tracking. Using -profile connectomics, 
-the pipeline will perform connectivity analysis based on atlas segmentation. The connectomics processes 
-are imported from the Connectoflow pipeline (https://github.com/scilus/connectoflow.git). If you are using
-only the connectomics profile, you need to provide all the necessary files to transform labels, run commit,
-run afd_fixel and compute metrics (see structure below).
+*** Please note that some steps have been removed from the original pipelines if they were not relevant ***
+*** for pediatric data. If you need some of these steps, please use the original pipelines. ***
 
-Both analysis (tracking and connectomics) can be performed one after another automatically (using
--profile tracking,connectomics). The pipeline will then reorganised channel to provide the correct inputs.
+Steps Selection
+---------------
 
-[1] Theaud, G., Houde, J.-C., Boré, A., Rheault, F., Morency, F., Descoteaux, M.,
-    TractoFlow: A robust, efficient and reproducible diffusion MRI pipeline
-    leveraging Nextflow & Singularity, NeuroImage,
-    https://doi.org/10.1016/j.neuroimage.2020.116889.
+It is possible to choose which part of the pipeline will be run by using the -profile parameter. Depending
+on which -profile is selected, input files will differ. To get a list of the required input files, use this 
+command:
 
+    nextflow run ChildBrainFlow/main.nf --help -profile {desired_profile}
 
-Run Tracking Pipeline
+Available Profiles
+------------------
 
-nextflow run main.nf [OPTIONAL_ARGUMENTS] --input [input_folder] -profile tracking
+Here is a list of available profiles: 
 
-Run Connectomics Pipeline
+    1. tracking :           If selected, preprocessing of DWI and Anatomical data will be performed followed by
+                            local modelling and tractography (see [1] for details).
+    2. connectomics :       If selected, labels registration, tractogram segmentation and connectivity will be 
+                            performed.
+    3. freesurfer :         If selected, FreeSurfer Recon-all will be run on input T1s and label files will be 
+                            generated (available atlases: freesurfer, brainnetome and glasser). Only available
+                            if T1 volume is supplied as input (therefore, not with -profile infant). 
+    4. infant :             If selected, the pipeline will assume the data is from infant patients (< 2 years old)
+                            and adapt some parameters to perform tractography and connectomics.
 
-nextflow run main.nf [OPTIONAL_ARGUMENTS] --input [input_folder] -profile connectomics
+Multiple profiles can be selected at the same time, the pipeline will simply organised channels to seemlessly
+connect each steps. 
 
-Run Both Pipeline
+To view the required input files, select all the profiles you want to run (ex: tracking, connectomics and infant) 
+and run this command : 
 
-nextflow run main.nf [OPTIONAL_ARGUMENTS] --input [input_folder] -profile tracking,connectomics
-
-DESCRIPTION
-
-    --input=/path/to/[input_folder]             Input folder containing multiple subjects
-
-                                                [Input]
-                                                ├-- S1
-                                                |   ├-- *dwi.nii.gz             [Required for all profiles]
-                                                |   ├-- *.bval                   [Required for all profiles]
-                                                |   ├-- *.bvec                   [Required for all profiles]
-                                                |   ├-- *revb0.nii.gz           [Required only for tracking]
-                                                |   ├-- *t2w_warped.nii.gz             [Required for all profiles]
-                                                |   ├-- *brain_mask.nii.gz      [Required only for tracking]
-                                                |   ├-- *wm_mask.nii.gz         [Required only for tracking]
-                                                |   ├-- *.trk                   [Required only for connectomics]
-                                                |   ├-- *labels.nii.gz          [Required only for connectomics]
-                                                |   ├-- *peaks.nii.gz           [Required only for connectomics]
-                                                |   ├-- *fodf.nii.gz            [Required only for connectomics]
-                                                |   ├-- OGenericAffine.mat      [Required only for connectomics]
-                                                |   ├-- synoutput0Warp.nii.gz   [Required only for connectomics]
-                                                |   ├-- maskoutput0Warp.nii.gz  [Required only for connectomics]
-                                                |   └-- metrics
-                                                |       └-- METRIC_NAME.nii.gz  [Optional]
-                                                └-- S2
-                                                    ├-- *dwi.nii.gz             [Required for all profiles]
-                                                    ├-- *bval                   [Required for all profiles]
-                                                    ├-- *bvec                   [Required for all profiles]
-                                                    ├-- *revb0.nii.gz           [Required only for tracking]
-                                                    ├-- *t2w.nii.gz             [Required for all profiles]
-                                                    ├-- *brain_mask.nii.gz      [Required only for tracking]
-                                                    ├-- *wm_mask.nii.gz         [Required only for tracking]
-                                                    ├-- *.trk                   [Required only for connectomics]
-                                                    ├-- *labels.nii.gz          [Required only for connectomics]
-                                                    ├-- *peaks.nii.gz           [Required only for connectomics]
-                                                    ├-- *fodf.nii.gz            [Required only for connectomics]
-                                                    ├-- OGenericAffine.mat      [Required only for connectomics]
-                                                    ├-- synoutput0Warp.nii.gz   [Required only for connectomics]
-                                                    ├-- maskoutput0Warp.nii.gz  [Required only for connectomics]
-                                                    └-- metrics
-                                                        └-- METRIC_NAME.nii.gz  [Optional]
-
-OPTIONAL ARGUMENTS (current value)
-
-[TRACKING OPTIONS]
-
-    --b0_thr                                    All b-values below b0_thr will be considered b=0 images. ($b0_thr)
-    --dwi_shell_tolerance                       All b-values +/- dwi_shell_tolerance will be considered the same b-value. 
-                                                ($dwi_shell_tolerance)
-    
-    BET DWI OPTIONS
-    --initial_bet_f                             Fractional intensity threshold for initial bet. ($initial_bet_f)
-    --final_bet_f                               Fractional intensity threshold for final bet. ($final_bet_f)
-    
-    BET T2 OPTIONS
-    --run_bet_t2w                               If set, will perform brain extraction on the input T2w volume. ($run_bet_t2w)
-                                                Default settings are soft to make sure an already brain extracted volume is not impacted 
-                                                by the bet command. The goal is to clean volumes that still have portions of non-brain 
-                                                structures.
-    --bet_t2w_f                                 Fractional intensity threshold for bet. ($bet_t2w_f)
-
-    EDDY AND TOPUP OPTIONS
-    --encoding_direction                        Encoding direction of the dwi [x, y, z]. ($encoding_direction)
-    --readout                                   Readout time. ($readout)
-    --topup_bet_f                               Fractional intensity threshold for bet before EDDY (generate brain mask).
-                                                ($topup_bet_f)
-    --eddy_cmd                                  Eddy command to use [eddy_openmp, eddy_cpu, eddy_cuda]. ($eddy_cmd)
-    --use_slice_drop_correction                 If set, will use the slice drop correction from EDDY. ($use_slice_drop_correction)
-
-    NORMALIZATION OPTIONS
-    --fa_mask_threshold                         Threshold to use when creating the fa mask for normalization. ($fa_mask_threshold)
-
-    RESAMPLE OPTIONS
-    --t2w_resolution                            Resampling resolution of the T2w image. ($t2w_resolution)
-    --t2w_interpolation                         Interpolation method to use after resampling. ($t2w_interpolation)
-    --mask_interpolation                        Interpolation method to use on the anatomical masks after resampling. ($mask_interpolation)
-    --dwi_resolution                            Resampling resolution of the dwi volume. ($dwi_resolution)
-    --dwi_interpolation                         Interpolation method to use after resampling of the dwi volume. ($dwi_interpolation)
-    --mask_dwi_interpolation                    Interpolation method to use on the b0 mask after resampling. ($mask_dwi_interpolation)
-
-    DTI OPTIONS
-    --max_dti_shell_value                       Maximum b-value threshold to select DTI shells. (b <= $max_dti_shell_value)
-                                                This is the default behavior unless --dti_shells is specified.
-    --dti_shells                                Shells selected to compute DTI metrics (generally b <= 1200).
-                                                They need to be supplied between quotes e.g. (--dti_shells "0 1000").
-                                                If supplied, will overwrite --max_dti_shell_value.
-    
-    SH OPTIONS
-    --sh_fitting                                If true, will compute a Sperical Harmonics fitting onto the DWI and output the SH coefficients
-                                                in a Nifti file. ($sh_fitting)
-    --sh_fitting_order                          SH order to use for the optional SH fitting (needs to be an even number). ($sh_fitting_order)
-                                                Rules : --sh_fitting_order=8 for 45 directions
-                                                        --sh_fitting_order=6 for 28 directions
-    --sh_fitting_basis                          SH basis to use for the optional SH fitting [descoteaux07, tournier07]. ($sh_fitting_basis)
-    --sh_fitting_shells                         Shells selected to compute the SH fitting. Mandatory if --sh_fitting is used.
-                                                They need to be supplied between quotes e.g. (--sh_fitting_shells "0 1500").
-                                                NOTE: SH fitting works only on single shell. The b0 shell has to be included.
-
-    FODF OPTIONS
-    --min_fodf_shell_value                      Minimum shell threshold to be used as a FODF shell (b >= $min_fodf_shell_value)
-                                                This is the default behavior unless --fodf_shells is provided.
-    --fodf_shells                               Shells selected to compute the FODF metrics (generally b >= 700).
-                                                They need to be supplied between quotes e.g. (--fodf_shells "0 1500")
-                                                If supplied, will overwrite --min_fodf_shell_value.
-    --max_fa_in_ventricle                       Maximal threshold of FA to be considered in a ventricle voxel. ($max_fa_in_ventricle)
-    --min_md_in_ventricle                       Minimum threshold of MD to be considered in a ventricle voxel. ($min_md_in_ventricle)
-    --relative_threshold                        Relative threshold on fODF amplitude in [0,1] ($relative_threshold)
-    --basis                                     fODF basis [descoteaux07, tournier07]. ($basis)
-    --sh_order                                  Sperical Harmonics order ($sh_order)
-                                                Rules : --sh_fitting_order=8 for 45 directions
-                                                        --sh_fitting_order=6 for 28 directions
-
-    FRF OPTIONS
-    --mean_frf                                  Mean the FRF of all subjects. ($mean_frf)
-                                                USE ONLY IF ALL OF SUBJECTS COME FROM THE SAME SCANNER
-                                                AND HAVE THE SAME ACQUISITION.
-    --fa                                        Initial FA threshold to compute the frf. ($fa)
-    --min_fa                                    Minimum FA threshold to compute the frf. ($min_fa)
-    --min_nvox                                  Minimum number of voxels to compute the frf. ($min_nvox)
-    --roi_radius                                Region of interest radius to compute the frf. ($roi_radius)
-    --set_frf                                   If selected, will manually set the frf. ($set_frf)
-    --manual_frf                                FRF set manually (--manual_frf "$manual_frf")
-    
-    SEEDING AND TRAKING OPTIONS
-    --use_brain_mask_as_tracking_mask           If selected, will use the complete brain mask (including GM, CSF and WM) as a tracking mask.
-                                                Be careful when examining your results, if the hemispheres are not properly separated by the mask,
-                                                streamlines could connect both hemisphere in the superior regions. Default is false and WM mask
-                                                is used as a tracking mask. ($use_brain_mask_as_tracking_mask)
-    --fa_seeding_mask_thr                       Minimal FA threshold to generate a binary fa mask for seeding and tracking.
-                                                ($fa_seeding_mask_thr)
-    --algo                                      Tracking algorithm [prob, det]. ($algo)
-    --nb_seeds                                  Number of seeds related to the seeding type param. ($nb_seeds)
-    --seeding                                   Seeding type [npv, nt]. ($seeding)
-    --step_size                                 Step size ($step_size)
-    --theta                                     Maximum angle between 2 steps. ($theta)
-    --min_len                                   Minimum length for a streamline. ($min_len)
-    --max_len                                   Maximum length for a streamline. ($max_len)
-    --compress_value                            Compression error threshold. ($compress_value)                                  
-    --tracking_seed                             List of random seed numbers for the random number generator. ($tracking_seed)
-                                                Please write them as a list separated by commas without space e.g. (--tracking_seed 1,2,3)
-
-    PROCESSES OPTIONS
-    --processes_denoise_dwi                     Number of processes for DWI denoising task ($processes_denoise_dwi)
-    --processes_eddy                            Number of processes for EDDY task. ($processes_eddy)
-    --processes_registration                    Number of processes for registration task. ($processes_registration)
-    --processes_fodf                            Number of processes for fODF task. ($processes_fodf)
-
-[CONNECTOMICS OPTIONS]
-
-    DECOMPOSE OPTIONS
-    --no_pruning                                If set, will not prune on length ($no_pruning)
-    --no_remove_loops                           If set, will not remove streamlines making loops ($no_remove_loops)
-    --no_remove_outliers                        If set, will not remove outliers using QB ($no_remove_outliers)
-    --min_length                                Pruning minimal segment length ($min_length)
-    --max_length                                Pruning maximal segment length ($max_length)
-    --loop_max_angle                            Maximal winding angle over which a streamline is considered as looping 
-                                                ($loop_max_angle)
-    --outlier_threshold                         Outlier removal threshold when using hierarchical QB ($outlier_threshold)
-
-    COMMIT OPTIONS
-    --nbr_dir                                   Number of directions, (half sphere), representing the possible orientations of the
-                                                response functions ($nbr_dir)
-    --para_diff                                 Parallel diffusivity in mm^2/s ($para_diff)
-    --iso_diff                                  Isotropic diffusivity in mm^2/s ($iso_diff)
-
-    PROCESSES OPTIONS
-    --processes_commit                          Number of processes for COMMIT task ($processes_commit)
-    --processes_afd_fixel                       Number of processes for AFD_FIXEL task ($processes_afd_fixel)
-    --processes_connectivity                    Number of processes for connectivity task ($processes_connectivity)
-
-[GLOBAL OPTIONS]
-
-    OUTPUT OPTIONS
-    --output_dir                                Directory to write the final results. Default is "./Results_Infant_Tracking/".
-
-AVAILABLE PROFILES (using -profile option (e.g. -profile no_symlink,macos,tracking))
-
-no_symlink                                      When used, results will be directly copied in the output folder and symlink will not
-                                                be used.
-
-macos                                           When used, the scratch folder will be modified for MacOS users.
-
-tracking                                        When used, will perform the tracking pipeline to generate the whole-brain
-                                                tractogram from raw diffusion images.
-
-connectomics                                    When used, will perform connectivity analysis between atlas-based segmentation.
-
-NOTES
-
-The 'scilpy/scripts' folder should be in your PATH environment variable. Not necessary if the
-Singularity container is used.
-
-The intermediate working directory is, by default, set to './work'.
-To change it, use the '-w WORK_DIR' argument.
-
-The default config file is tractoflow/nextflow.config.
-Use '-C config_file.config' to specify a non-default configuration file.
-The '-C config_file.config' must be inserted after the nextflow call
-like 'nextflow -C config_file.config run ...'.
+    nextflow run ChildBrainFlow/main.nf --help -profile tracking,connectomics,infant

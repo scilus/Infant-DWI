@@ -1,0 +1,21 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  pipeline-compilation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nf-core/setup-nextflow@v1
+      - name: Run pipeline
+        run: |
+          nextflow run ${GITHUB_WORKSPACE} --help 
+          nextflow run ${GITHUB_WORKSPACE} --help -profile tracking
+          nextflow run ${GITHUB_WORKSPACE} --help -profile tracking,infant
+          nextflow run ${GITHUB_WORKSPACE} --help -profile connectomics
+          nextflow run ${GITHUB_WORKSPACE} --help -profile connectomics,infant
+          nextflow run ${GITHUB_WORKSPACE} --help -profile tracking,connectomics
+          nextflow run ${GITHUB_WORKSPACE} --help -profile tracking,connectomics,infant
+          nextflow run ${GITHUB_WORKSPACE} --help -profile freesurfer
+          nextflow run ${GITHUB_WORKSPACE} --help -profile freesurfer,connectomics
+          nextflow run ${GITHUB_WORKSPACE} --help -profile freesurfer,connectomics,tracking

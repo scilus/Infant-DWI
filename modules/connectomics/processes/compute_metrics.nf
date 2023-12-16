@@ -5,7 +5,6 @@ nextflow.enable.dsl=2
 process COMPUTE_AFD_FIXEL {
     cpus params.processes_afd_fixel
     memory '2 GB'
-    label "COMPUTE_AFD_FIXEL"
 
     input:
         tuple val(sid), path(h5), path(fodf)
@@ -21,7 +20,6 @@ process COMPUTE_AFD_FIXEL {
 process COMPUTE_CONNECTIVITY {
     cpus params.processes_connectivity
     memory '2 GB'
-    label "COMPUTE_CONNECTIVITY"
 
     input:
         tuple val(sid), path(h5), path(labels), path(metrics)

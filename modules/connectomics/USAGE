@@ -1,0 +1,120 @@
+
+ChildBrainFlow Pipeline
+=======================
+
+ChildBrainFlow is an end-to-end pipeline that performs tractography, t1 reconstruction and connectomics.
+It is essentially a merged version of multiple individual pipeline to avoid the handling of inputs/outputs
+between flows with some parameters tuned for pediatric brain scans. Here is a list of flows from which 
+process have been taken: 
+
+    1. TractoFlow (https://github.com/scilus/tractoflow.git)
+    2. FreeSurfer-Flow (https://github.com/scilus/freesurfer_flow)
+    3. Connectoflow (https://github.com/scilus/connectoflow)
+
+*** Please note that some steps have been removed from the original pipelines if they were not relevant ***
+*** for pediatric data. If you need some of these steps, please use the original pipelines. ***
+
+Run Connectomics Pipeline
+
+nextflow run main.nf [OPTIONAL_ARGUMENTS] --input [input_folder] -profile connectomics
+
+DESCRIPTION
+
+    --input=/path/to/[input_folder]             Input folder containing multiple subjects
+
+                                                [Input]
+                                                ├-- S1
+                                                |   ├-- *dwi.nii.gz
+                                                |   ├-- *.bval
+                                                |   ├-- *.bvec
+                                                |   |-- *t1.nii.gz              [Registered to diff space.]
+                                                |   ├-- *.trk
+                                                |   ├-- *labels.nii.gz          [Native t1 space]
+                                                |   ├-- *peaks.nii.gz
+                                                |   ├-- *fodf.nii.gz
+                                                |   ├-- OGenericAffine.mat
+                                                |   ├-- output1Warp.nii.gz
+                                                |   └-- metrics
+                                                |       └-- METRIC_NAME.nii.gz  [Optional]
+                                                └-- S2
+                                                    ├-- *dwi.nii.gz
+                                                    ├-- *bval
+                                                    ├-- *bvec
+                                                    |-- *t1.nii.gz              [Registered to diff space.]
+                                                    ├-- *.trk
+                                                    ├-- *labels.nii.gz          [Native t1 space]
+                                                    ├-- *peaks.nii.gz
+                                                    ├-- *fodf.nii.gz
+                                                    ├-- OGenericAffine.mat
+                                                    ├-- output1Warp.nii.gz
+                                                    └-- metrics
+                                                        └-- METRIC_NAME.nii.gz  [Optional]
+
+[CONNECTOMICS OPTIONS]
+
+    DECOMPOSE OPTIONS
+    --no_pruning                                If set, will not prune on length ($no_pruning)
+    --no_remove_loops                           If set, will not remove streamlines making loops ($no_remove_loops)
+    --no_remove_outliers                        If set, will not remove outliers using QB ($no_remove_outliers)
+    --min_length                                Pruning minimal segment length ($min_length)
+    --max_length                                Pruning maximal segment length ($max_length)
+    --loop_max_angle                            Maximal winding angle over which a streamline is considered as looping 
+                                                ($loop_max_angle)
+    --outlier_threshold                         Outlier removal threshold when using hierarchical QB 
+                                                ($outlier_threshold)
+
+    COMMIT OPTIONS
+    --run_commit                                If set, COMMIT will be run on the tractogram. ($run_commit)
+    --use_commit2                               If set, COMMIT2 will be use rather than COMMIT1. ($use_commit2)
+                                                COMMIT2 output will replaced the COMMIT1 output.
+    --use_both_commit                           If set, COMMIT2 will be run first followed by COMMIT1 for multi-shell
+                                                data. ($use_both_commit)
+    --b_thr                                     Tolerance value to considier bvalues to be the same shell.
+    --nbr_dir                                   Number of directions, (half sphere), representing the possible 
+                                                orientations of the response functions ($nbr_dir)
+    --ball_stick                                If set, will use the ball&stick model and disable the zeppelin 
+                                                compartment for single-shell data. ($ball_stick)
+    --para_diff                                 Parallel diffusivity in mm^2/s ($para_diff)
+    --perp_diff                                 Perpendicular diffusivity in mm^2/s ($perp_diff)
+    --iso_diff                                  Isotropic diffusivity in mm^2/s ($iso_diff)                                
+
+    PROCESSES OPTIONS
+    --processes                                 The number of parallel processes to launch ($cpu_count).
+                                                Only affects the local scheduler.
+    --processes_commit                          Number of processes for COMMIT task ($processes_commit)
+    --processes_afd_fixel                       Number of processes for AFD_FIXEL task ($processes_afd_fixel)
+    --processes_connectivity                    Number of processes for connectivity task ($processes_connectivity)
+
+[GLOBAL OPTIONS]
+
+    OUTPUT OPTIONS
+    --output_dir                                Directory to write the final results. Default is 
+                                                "./Results_ChildBrainFlow/".
+
+AVAILABLE PROFILES (using -profile option (e.g. -profile no_symlink,macos,tracking))
+
+no_symlink                                      When used, results will be directly copied in the output folder and 
+                                                symlink will not be used.
+
+macos                                           When used, the scratch folder will be modified for MacOS users.
+
+tracking                                        When used, will perform the tracking pipeline to generate the 
+                                                whole-brain tractogram from raw diffusion images.
+
+freesurfer                                      When used, will run recon-all and atlases generation from t1 volumes.
+
+connectomics                                    When used, will perform connectivity analysis between atlas-based 
+                                                segmentation.
+
+NOTES
+
+The 'scilpy/scripts' folder should be in your PATH environment variable. Not necessary if the
+Singularity container is used.
+
+The intermediate working directory is, by default, set to './work'.
+To change it, use the '-w WORK_DIR' argument.
+
+The default config file is ChildBrainFlow/nextflow.config.
+Use '-C config_file.config' to specify a non-default configuration file.
+The '-C config_file.config' must be inserted after the nextflow call
+like 'nextflow -C config_file.config run ...'.

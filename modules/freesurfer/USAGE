@@ -1,0 +1,116 @@
+
+ChildBrainFlow Pipeline
+=======================
+
+ChildBrainFlow is an end-to-end pipeline that performs tractography, t1 reconstruction and connectomics.
+It is essentially a merged version of multiple individual pipeline to avoid the handling of inputs/outputs
+between flows with some parameters tuned for pediatric brain scans. Here is a list of flows from which 
+process have been taken: 
+
+    1. TractoFlow (https://github.com/scilus/tractoflow.git)
+    2. FreeSurfer-Flow (https://github.com/scilus/freesurfer_flow)
+    3. Connectoflow (https://github.com/scilus/connectoflow)
+
+*** Please note that some steps have been removed from the original pipelines if they were not relevant ***
+*** for pediatric data. If you need some of these steps, please use the original pipelines. ***
+
+Run FreeSurferFlow Pipeline
+
+nextflow run main.nf [OPTIONAL_ARGUMENTS] --input [input_folder] -profile freesurfer
+
+DESCRIPTION
+
+    --input=/path/to/[input_folder]             Input folder containing multiple subjects
+
+                                                [Input]
+                                                ├-- S1
+                                                |   └-- *t1.nii.gz
+                                                └-- S2
+                                                    └-- *t1.nii.gz
+
+    --recon_all                                 If set, will use traditional freesurfer recon-all command to produce
+                                                anatomical surfaces. ($recon_all)
+    --recon_surf                                If set, will use CNN based FastSurfer and recon-surf to produce
+                                                anatomical surfaces (way faster!). ($recon_surf)
+    --use_freesurfer_atlas                      If set, will use the freesurfer atlas if -profile connectomics is used.
+                                                ($use_freesurfer_atlas)
+    --use_brainnetome_atlas                     If set, will use the brainnetome atlas if -profile connectomics is used.
+                                                ($use_brainnetome_atlas)
+    --use_brainnetome_child_atlas               If set, will use the brainnetome child atlas if -profile connectomcis
+                                                is used. This is the default setting. ($use_brainnetome_child_atlas)
+    --use_glasser_atlas                         If set, will use the Glasser atlas if -profile connectomics is used.
+                                                ($use_glasser_atlas)
+    --use_schaefer_100_atlas                    If set, will use the Schaefer 100 atlas if -profile connectomics is used.
+                                                ($use_schaefer_100_atlas)
+    --use_schaefer_200_atlas                    If set, will use the Schaefer 200 atlas if -profile connectomics is used.
+                                                ($use_schaefer_200_atlas)
+    --use_schaefer_400_atlas                    If set, will use the Schaefer 400 atlas if -profile connectomics is used.
+                                                ($use_schaefer_400_atlas)
+    --use_lausanne_1_atlas                      If set, will use the lausanne scale 1 atlas if -profile connectomics is
+                                                used. ($use_lausanne_1_atlas)
+    --use_lausanne_2_atlas                      If set, will use the lausanne scale 1 atlas if -profile connectomics is
+                                                used. ($use_lausanne_2_atlas)
+    --use_lausanne_3_atlas                      If set, will use the lausanne scale 1 atlas if -profile connectomics is
+                                                used. ($use_lausanne_3_atlas)
+    --use_lausanne_4_atlas                      If set, will use the lausanne scale 1 atlas if -profile connectomics is
+                                                used. ($use_lausanne_4_atlas)
+    --use_lausanne_5_atlas                      If set, will use the lausanne scale 1 atlas if -profile connectomics is
+                                                used. ($use_lausanne_5_atlas)
+    --use_dilated_labels                        If set, will use the dilated version of the atlas selected above. 
+                                                ($use_dilated_labels)
+
+
+OPTIONAL ARGUMENTS (current value)
+
+[FREESURFERFLOW OPTIONS]
+
+    --atlas_utils_folder                        Folder needed to convert freesurfer atlas to other atlases. Default is
+                                                the path of folder within the container. ($atlas_utils_folder)
+    --nb_threads                                Number of threads used by recon-all and the atlases creation
+                                                ($nb_threads)
+    --compute_BN_child                          Compute the connectivity-friendly Brainnetome Child atlas.
+                                                ($compute_BN_child)
+    --compute_FS_BN_GL_SF                       Compute the connectivity-friendly atlases : ($compute_FS_BN_GL_SF)
+                                                    * FreeSurfer (adapted)
+                                                    * Brainnetome
+                                                    * Glasser
+                                                    * Schaefer (100/200/400)
+    --compute_lausanne_multiscale               Compute the connectivity multiscale atlases from Lausanne
+                                                ($compute_lausanne_multiscale)
+    --compute_lobes                             Compute the lobes atlas. ($compute_lobes)
+    --processes                                 The number of parallel processes to launch ($cpu_count).
+                                                Only affects the local scheduler.
+
+[GLOBAL OPTIONS]
+
+    OUTPUT OPTIONS
+    --output_dir                                Directory to write the final results. Default is 
+                                                "./Results_ChildBrainFlow/".
+
+AVAILABLE PROFILES (using -profile option (e.g. -profile no_symlink,macos,tracking))
+
+no_symlink                                      When used, results will be directly copied in the output folder and 
+                                                symlink will not be used.
+
+macos                                           When used, the scratch folder will be modified for MacOS users.
+
+tracking                                        When used, will perform the tracking pipeline to generate the 
+                                                whole-brain tractogram from raw diffusion images.
+
+freesurfer                                      When used, will run recon-all and atlases generation from t1 volumes.
+
+connectomics                                    When used, will perform connectivity analysis between atlas-based 
+                                                segmentation.
+
+NOTES
+
+The 'scilpy/scripts' folder should be in your PATH environment variable. Not necessary if the
+Singularity container is used.
+
+The intermediate working directory is, by default, set to './work'.
+To change it, use the '-w WORK_DIR' argument.
+
+The default config file is ChildBrainFlow/nextflow.config.
+Use '-C config_file.config' to specify a non-default configuration file.
+The '-C config_file.config' must be inserted after the nextflow call
+like 'nextflow -C config_file.config run ...'.

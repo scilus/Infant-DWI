@@ -3,7 +3,6 @@
 nextflow.enable.dsl=2
 
 process FODF_SHELL {
-    label "FODF"
     cpus 3
 
     input:
@@ -13,35 +12,34 @@ process FODF_SHELL {
         path("${sid}__bvec_fodf"), emit: dwi_fodf
     script:
     if (params.fodf_shells)
-      """
+    """
         export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
         export OMP_NUM_THREADS=1
         export OPENBLAS_NUM_THREADS=1
         scil_extract_dwi_shell.py $dwi \
-          $bval $bvec $params.fodf_shells ${sid}__dwi_fodf.nii.gz \
-          ${sid}__bval_fodf ${sid}__bvec_fodf -t $params.dwi_shell_tolerance -f
-      """
+            $bval $bvec $params.fodf_shells ${sid}__dwi_fodf.nii.gz \
+            ${sid}__bval_fodf ${sid}__bvec_fodf -t $params.dwi_shell_tolerance -f
+    """
     else
-      """
-      export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
-      export OMP_NUM_THREADS=1
-      export OPENBLAS_NUM_THREADS=1
+    """
+        export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+        export OMP_NUM_THREADS=1
+        export OPENBLAS_NUM_THREADS=1
 
-      shells=\$(awk -v min_fodf="$params.min_fodf_shell_value" -v b0_thr="$params.b0_thr" '{for (i = 1; i <= NF; i++) 
-              {v = int(\$i);if (v >= min_fodf || v <= b0_thr) shells[v] = 1;}}
-              END {
-                  for (v in shells) print v;
-                  }
-              ' "$bval" | sort -n | tr '\n' ' ')  
+        shells=\$(awk -v min_fodf="$params.min_fodf_shell_value" -v b0_thr="$params.b0_thr" '{for (i = 1; i <= NF; i++) 
+                {v = int(\$i);if (v >= min_fodf || v <= b0_thr) shells[v] = 1;}}
+                END {
+                    for (v in shells) print v;
+                    }
+                ' "$bval" | sort -n | tr '\n' ' ')  
 
-      scil_extract_dwi_shell.py $dwi \
+        scil_extract_dwi_shell.py $dwi \
         $bval $bvec \$shells ${sid}__dwi_fodf.nii.gz \
         ${sid}__bval_fodf ${sid}__bvec_fodf -t $params.dwi_shell_tolerance -f
-      """
+    """
 }
 
 process COMPUTE_FRF {
-    label "FRF"
     cpus 3
 
     input:
@@ -71,9 +69,8 @@ process COMPUTE_FRF {
 }
 
 process MEAN_FRF {
-    label "FRF"
     cpus 1
-    publishDir = params.Mean_FRF_Publish_Dir
+    publishDir = "${params.output_dir}/MEAN_FRF"
 
     input:
         path(all_frf)
@@ -89,7 +86,6 @@ process MEAN_FRF {
 }
 
 process FODF_METRICS {
-    label "FODF"
     cpus params.processes_fodf
 
     input:
@@ -119,7 +115,7 @@ process FODF_METRICS {
         --fa_t $params.max_fa_in_ventricle --md_t $params.min_md_in_ventricle\
         -f
     
-    a_threshold=\$( echo " 2 * `awk '{for(i=1;i<=NF;i++) if(\$i>maxval) maxval=\$i;}; END { print maxval;}' ventricles_fodf_max_value.txt`" | bc )
+    a_threshold=\$( echo " $params.fodf_metrics_a_factor * `awk '{for(i=1;i<=NF;i++) if(\$i>maxval) maxval=\$i;}; END { print maxval;}' ventricles_fodf_max_value.txt`" | bc )
 
     scil_compute_fodf_metrics.py ${sid}__fodf.nii.gz --mask $b0_mask --sh_basis $params.basis\
         --peaks ${sid}__peaks.nii.gz --peak_indices ${sid}__peak_indices.nii.gz\

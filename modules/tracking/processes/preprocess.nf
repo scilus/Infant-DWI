@@ -3,28 +3,33 @@
 nextflow.enable.dsl=2
 
 process BET_DWI {
-    label "BET"
     cpus 2
 
     input:
         tuple val(sid), path(dwi), path(bval), path(bvec)
     output:
         tuple val(sid), path("${sid}__dwi_bet.nii.gz"), emit: bet_dwi
+    when:
+        !params.skip_dwi_preprocessing
+
     script:
+    // ** Using a combination of preliminary bet, powder average computation and then final bet. ** //
+    // ** This might not be necessary for good quality data, but returns much more robust results on ** //
+    // ** infant data. ** //
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
     export OMP_NUM_THREADS=1
     export OPENBLAS_NUM_THREADS=1
     scil_extract_b0.py $dwi $bval $bvec ${sid}__b0_mean.nii.gz\
         --b0_thr $params.b0_thr --force_b0_threshold --mean
-    bet2 ${sid}__b0_mean.nii.gz ${sid}__b0_bet -f $params.initial_bet_f -m
+    bet ${sid}__b0_mean.nii.gz ${sid}__b0_bet -f $params.initial_bet_f -m -R
     scil_image_math.py convert ${sid}__b0_bet_mask.nii.gz ${sid}__b0_bet_mask.nii.gz\
         --data_type uint8 -f
     mrcalc $dwi ${sid}__b0_bet_mask.nii.gz -mult ${sid}__dwi_bet_prelim.nii.gz\
         -quiet -force -nthreads 1
     scil_compute_powder_average.py ${sid}__dwi_bet_prelim.nii.gz $bval\
         ${sid}__powder_avg.nii.gz --b0_thr $params.b0_thr -f
-    bet2 ${sid}__powder_avg.nii.gz ${sid}__powder_avg_bet -m -f $params.final_bet_f
+    bet ${sid}__powder_avg.nii.gz ${sid}__powder_avg_bet -m -R -f $params.final_bet_f
     scil_image_math.py convert ${sid}__powder_avg_bet_mask.nii.gz ${sid}__powder_avg_bet_mask.nii.gz\
         --data_type uint8 -f
     mrcalc $dwi ${sid}__powder_avg_bet_mask.nii.gz -mult ${sid}__dwi_bet.nii.gz\
@@ -33,30 +38,33 @@ process BET_DWI {
 }
 
 process BET_T2 {
-    label "BET"
     cpus 2
 
     input:
         tuple val(sid), path(anat)
     output:
-        tuple val(sid), path("${sid}__t2w_bet.nii.gz"), emit: bet_t2
+        tuple val(sid), path("${sid}__t2w_bet.nii.gz"), emit: t2_bet
+    when:
+        params.infant_config
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
     export OMP_NUM_THREADS=1
     export OPENBLAS_NUM_THREADS=1
-    bet2 $anat ${sid}__t2w_bet.nii.gz -f $params.bet_t2w_f
+    bet $anat ${sid}__t2w_bet.nii.gz -f $params.bet_anat_f -R
     """
 }
 
 process DENOISING {
-    label "DENOISING"
     cpus params.processes_denoise_dwi
 
     input:
         tuple val(sid), path(dwi)
     output:
         tuple val(sid), path("${sid}__dwi_denoised.nii.gz"), emit: denoised_dwi
+    when:
+        !params.skip_dwi_preprocessing
+    
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
@@ -68,7 +76,6 @@ process DENOISING {
 }
 
 process TOPUP {
-    label "TOPUP"
     cpus 4
 
     input:
@@ -76,6 +83,9 @@ process TOPUP {
     output:
         tuple val(sid), path("${sid}__corrected_b0s.nii.gz"), path("${params.topup_prefix}_fieldcoef.nii.gz"),
         path("${params.topup_prefix}_movpar.txt"), emit: topup_result
+    when:
+        !params.skip_dwi_preprocessing
+
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
@@ -99,7 +109,6 @@ process TOPUP {
 }
 
 process EDDY_TOPUP {
-    label "EDDY_TOPUP"
     cpus params.processes_eddy
     memory { 5.GB * task.attempt }
 
@@ -109,6 +118,9 @@ process EDDY_TOPUP {
         tuple val(sid), path("${sid}__dwi_corrected.nii.gz"), path("${sid}__bval_eddy"), 
         path("${sid}__dwi_eddy_corrected.bvec"), emit: dwi_bval_bvec
         tuple val(sid), path("${sid}__b0_bet_mask.nii.gz"), emit: b0_mask
+    when:
+        !params.skip_dwi_preprocessing
+
     script:
     slice_drop_flag=""
     if (params.use_slice_drop_correction)
@@ -135,13 +147,15 @@ process EDDY_TOPUP {
 }
 
 process N4 {
-    label "N4"
     cpus 1
 
     input:
         tuple val(sid), path(dwi), path(bval), path(bvec), path(b0_mask)
     output:
         tuple val(sid), path("${sid}__dwi_n4.nii.gz"), emit: dwi_n4
+    when:
+        !params.skip_dwi_preprocessing
+
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$task.cpus
@@ -159,7 +173,6 @@ process N4 {
 }
 
 process CROP_DWI {
-    label "CROP_VOLUMES"
     cpus 1
 
     input:
@@ -182,66 +195,150 @@ process CROP_DWI {
     """
 }
 
-process CROP_ANAT {
-    label "CROP_VOLUMES"
-    cpus 1
+process DENOISE_T1 {
+    cpus params.processes_denoise_t1
 
     input:
-        tuple val(sid), path(t2w), path(brain_mask), path(wm_mask)
+        tuple val(sid), path(t1)
     output:
-        tuple val(sid), path("${sid}__t2w_cropped.nii.gz"), path("${sid}__brain_mask_cropped.nii.gz"),
-        path("${sid}__wm_mask_cropped.nii.gz"), emit: cropped_t2w_and_mask
+        tuple val(sid), path("${sid}__t1_denoised.nii.gz"), emit: t1_denoised
+    when:
+        !params.infant_config
+    
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
     export OMP_NUM_THREADS=1
     export OPENBLAS_NUM_THREADS=1
-    scil_crop_volume.py $t2w ${sid}__t2w_cropped.nii.gz\
-        --output_bbox t2w_boundingBox.pkl -f
-    scil_crop_volume.py $brain_mask ${sid}__brain_mask_cropped.nii.gz\
-        --input_bbox t2w_boundingBox.pkl -f
-    scil_crop_volume.py $wm_mask ${sid}__wm_mask_cropped.nii.gz\
-        --input_bbox t2w_boundingBox.pkl -f
+    scil_run_nlmeans.py $t1 ${sid}__t1_denoised.nii.gz 1\
+        --processes $task.cpus -f
+    """
+}
+
+process N4_T1 {
+    cpus 1
+
+    input:
+        tuple val(sid), path(t1)
+    output:
+        tuple val(sid), path("${sid}__t1_n4.nii.gz"), emit: t1_n4
+    when:
+        !params.infant_config
+    
+    script:
+    """
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    N4BiasFieldCorrection -i $t1\
+        -o [${sid}__t1_n4.nii.gz, bias_field_t1.nii.gz]\
+        -c [300x150x75x50, 1e-6] -v 1
+    """
+}
+
+process CROP_ANAT {
+    cpus 1
+
+    input:
+        tuple val(sid), path(anat), path(mask)
+    output:
+        tuple val(sid), 
+        path("${sid}__anat_cropped.nii.gz"), 
+        path("${sid}__mask_cropped.nii.gz"), emit: cropped_anat_and_mask
+    script:
+    """
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    scil_crop_volume.py $anat ${sid}__anat_cropped.nii.gz\
+        --output_bbox boundingBox.pkl -f
+    scil_crop_volume.py $mask ${sid}__mask_cropped.nii.gz\
+        --input_bbox boundingBox.pkl -f
+    """
+}
+
+process RESAMPLE_T1 {
+    cpus 1
+
+    input:
+        tuple val(sid), path(t1)
+    output:
+        tuple val(sid), path("${sid}__t1_resampled.nii.gz"), emit: t1_resampled
+    when:
+        !params.infant_config
+
+    script:
+    """
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    scil_resample_volume.py $t1 ${sid}__t1_resampled.nii.gz\
+        --voxel_size $params.anat_resolution \
+        --interp $params.anat_interpolation
+    """
+}
+
+process BET_T1 {
+    cpus params.processes_bet_t1
+
+    input:
+        tuple val(sid), path(t1)
+    output:
+        tuple val(sid), 
+        path("${sid}__t1_bet.nii.gz"), 
+        path("${sid}__t1_bet_mask.nii.gz"), emit: t1_and_mask_bet
+    when:
+        !params.infant_config
+    
+    script:
+    """
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$task.cpus
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    export ANTS_RANDOM_SEED=1234
+    antsBrainExtraction.sh -d 3 -a $t1 -e $params.template_t1/t1_template.nii.gz\
+        -o bet/ -m $params.template_t1/t1_brain_probability_map.nii.gz -u 0
+    scil_image_math.py convert bet/BrainExtractionMask.nii.gz ${sid}__t1_bet_mask.nii.gz\
+        --data_type uint8
+    mrcalc $t1 ${sid}__t1_bet_mask.nii.gz -mult ${sid}__t1_bet.nii.gz -nthreads 1
     """
 }
 
 process RESAMPLE_ANAT {
-    label "RESAMPLE_VOLUMES"
     cpus 1
 
     input:
-        tuple val(sid), path(t2w), path(brain_mask), path(wm_mask)
+        tuple val(sid), path(t2w), path(mask)
     output:
-        tuple val(sid), path("${sid}__t2w_resampled.nii.gz"), path("${sid}__brain_mask_resampled.nii.gz"),
-        path("${sid}__wm_mask_resampled.nii.gz"), emit: t2w_and_mask
+        tuple val(sid), path("${sid}__t2w_resampled.nii.gz"), path("${sid}__mask_resampled.nii.gz"), emit: t2w_and_mask
+    when:
+        params.infant_config
+        
     script:
     """
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
     export OMP_NUM_THREADS=1
     export OPENBLAS_NUM_THREADS=1
     scil_resample_volume.py $t2w ${sid}__t2w_resampled.nii.gz\
-        --voxel_size $params.t2w_resolution --interp $params.t2w_interpolation -f
-    scil_resample_volume.py $brain_mask ${sid}__brain_mask_resampled.nii.gz\
-        --voxel_size $params.t2w_resolution --interp $params.mask_interpolation\
+        --voxel_size $params.anat_resolution --interp $params.anat_interpolation -f
+    scil_resample_volume.py $mask ${sid}__mask_resampled.nii.gz\
+        --voxel_size $params.anat_resolution --interp $params.mask_interpolation\
         -f
-    scil_image_math.py convert ${sid}__brain_mask_resampled.nii.gz ${sid}__brain_mask_resampled.nii.gz\
-        --data_type uint8 -f
-    scil_resample_volume.py $wm_mask ${sid}__wm_mask_resampled.nii.gz\
-        --voxel_size $params.t2w_resolution --interp $params.mask_interpolation\
-        -f
-    scil_image_math.py convert ${sid}__wm_mask_resampled.nii.gz ${sid}__wm_mask_resampled.nii.gz\
+    scil_image_math.py convert ${sid}__mask_resampled.nii.gz ${sid}__mask_resampled.nii.gz\
         --data_type uint8 -f
     """
 }
 
 process NORMALIZE {
-    label "NORMALIZE_DWI"
     cpus 3
 
     input:
         tuple val(sid), path(dwi), path(bval), path(bvec), path(b0_mask)
     output:
         tuple val(sid), path("${sid}__dwi_normalized.nii.gz"), emit: dwi_normalized
+    when:
+        !params.skip_dwi_preprocessing
+
     script:
     if (params.dti_shells)
     """
@@ -263,7 +360,7 @@ process NORMALIZE {
     export OPENBLAS_NUM_THREADS=1
 
     shells=\$(awk -v max="$params.max_dti_shell_value" '{for (i = 1; i <= NF; i++) {v = int(\$i);if (v <= max) shells[v] = 1;}}END {for (v in shells) print v;}' "$bval" |\
-             sort -n | tr '\n' ' ')
+                sort -n | tr '\n' ' ')
     
     scil_extract_dwi_shell.py $dwi $bval $bvec \$shells\
         dwi_dti.nii.gz bval_dti bvec_dti -t $params.dwi_shell_tolerance
@@ -276,7 +373,6 @@ process NORMALIZE {
 }
 
 process RESAMPLE_DWI {
-    label "RESAMPLE_DWI"
     cpus 3
 
     input:
@@ -301,7 +397,6 @@ process RESAMPLE_DWI {
 }
 
 process EXTRACT_B0 {
-    label "EXTRACT_B0"
     cpus 3
 
     input:
@@ -316,6 +411,26 @@ process EXTRACT_B0 {
     scil_extract_b0.py $dwi $bval $bvec ${sid}__b0_resampled.nii.gz --mean\
         --b0_thr $params.b0_thr --force_b0_threshold
     mrthreshold ${sid}__b0_resampled.nii.gz ${sid}__b0_mask_resampled.nii.gz\
+        --abs 0.00001 -nthreads 1
+    """
+}
+
+process DWI_MASK {
+    cpus 1
+
+    input:
+        tuple val(sid), path(dwi), path(bval), path(bvec)
+    output:
+        tuple val(sid), path("${sid}__b0_mask.nii.gz"), emit: dwi_mask
+    
+    script:
+    """
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    scil_extract_b0.py $dwi $bval $bvec b0.nii.gz --mean\
+        --b0_thr $params.b0_thr --force_b0_threshold
+    mrthreshold b0.nii.gz ${sid}__b0_mask.nii.gz\
         --abs 0.00001 -nthreads 1
     """
 }

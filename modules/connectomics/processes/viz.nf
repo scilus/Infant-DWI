@@ -4,7 +4,6 @@ nextflow.enable.dsl=2
 
 process VISUALIZE_CONNECTIVITY {
     cpus 1
-    label "VIZ"
     memory "2 GB"
 
     input:

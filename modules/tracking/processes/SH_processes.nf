@@ -3,7 +3,6 @@
 nextflow.enable.dsl=2
 
 process SH_FITTING_SHELL {
-    label "SH_FITTING"
     cpus 3
 
     input:
@@ -23,7 +22,6 @@ process SH_FITTING_SHELL {
 }
 
 process SH_FITTING {
-    label "SH_FITTING"
     cpus 1
     
     input:
